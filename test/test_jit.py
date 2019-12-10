@@ -49,18 +49,18 @@ from torch.quantization import default_per_channel_weight_observer
 from torch.quantization import default_qconfig
 
 from torch.quantization import quantize
-from common_quantization import SingleLayerLinearModel, AnnotatedSingleLayerLinearModel
-from common_quantization import ConvModel, AnnotatedConvModel
-from common_quantization import test_only_eval_fn as _test_only_eval_fn
+from torch.testlib.common_quantization import SingleLayerLinearModel, AnnotatedSingleLayerLinearModel
+from torch.testlib.common_quantization import ConvModel, AnnotatedConvModel
+from torch.testlib.common_quantization import test_only_eval_fn as _test_only_eval_fn
 
 
 # Testing utils
-import jit_utils
-from common_utils import run_tests, IS_WINDOWS, TEST_WITH_UBSAN, \
+from torch.testlib import jit_utils
+from torch.testlib.common_utils import run_tests, IS_WINDOWS, TEST_WITH_UBSAN, \
     skipIfRocm, suppress_warnings, IS_SANDCASTLE, GRAPH_EXECUTOR, ProfilingMode, \
     freeze_rng_state, set_rng_seed, slowTest, TemporaryFileName, skipIfCompiledWithoutNumpy, \
     enable_profiling_mode
-from jit_utils import JitTestCase, enable_cpu_fuser, disable_autodiff_subgraph_inlining, \
+from torch.testlib.jit_utils import JitTestCase, enable_cpu_fuser, disable_autodiff_subgraph_inlining, \
     _trace, enable_cpu_fuser_if, do_input_map, \
     execWrapper, _inline_everything, _tmp_donotuse_dont_inline_everything, \
     get_forward, get_forward_graph, get_module_method, \

@@ -2,7 +2,7 @@ r"""Importing this file must **not** initialize CUDA context. test_distributed
 relies on this assumption to properly run. This means that when this is imported
 no CUDA calls shall be made, including torch.cuda.device_count(), etc.
 
-common_cuda.py can freely initialize CUDA context when imported.
+torch.testlib.common_cuda.py can freely initialize CUDA context when imported.
 """
 
 import sys
@@ -31,7 +31,7 @@ import tempfile
 import __main__
 import errno
 
-import expecttest
+from torch.testlib import expecttest
 
 import torch
 import torch.cuda
@@ -40,6 +40,8 @@ from torch._six import string_classes, inf
 import torch.backends.cudnn
 import torch.backends.mkl
 from enum import Enum
+from torch.autograd import gradcheck
+from torch.autograd.gradcheck import gradgradcheck
 
 torch.backends.disable_global_flags()
 
@@ -106,7 +108,7 @@ UNITTEST_ARGS = [sys.argv[0]] + remaining
 torch.manual_seed(SEED)
 
 
-def shell(command, cwd=None):
+def shell(command, cwd=None, env=None):
     sys.stdout.flush()
     sys.stderr.flush()
     # The following cool snippet is copied from Py3 core library subprocess.call
@@ -117,7 +119,7 @@ def shell(command, cwd=None):
     #
     # https://github.com/python/cpython/blob/71b6c1af727fbe13525fb734568057d78cea33f3/Lib/subprocess.py#L309-L323
     assert not isinstance(command, torch._six.string_classes), "Command to shell should be a list or tuple of tokens"
-    p = subprocess.Popen(command, universal_newlines=True, cwd=cwd)
+    p = subprocess.Popen(command, universal_newlines=True, cwd=cwd, env=env)
     try:
         return p.wait()
     except KeyboardInterrupt:
@@ -487,7 +489,7 @@ class CudaMemoryLeakCheck():
 
         # initialize context & RNG to prevent false positive detections
         # when the test is the first to initialize those
-        from common_cuda import initialize_cuda_context_rng
+        from torch.testlib.common_cuda import initialize_cuda_context_rng
         initialize_cuda_context_rng()
 
     @staticmethod
@@ -613,7 +615,7 @@ class TestCase(expecttest.TestCase):
         # the import below may initialize CUDA context, so we do it only if
         # self._do_cuda_memory_leak_check or self._do_cuda_non_default_stream
         # is True.
-        from common_cuda import TEST_CUDA
+        from torch.testlib.common_cuda import TEST_CUDA
         fullname = self.id().lower()  # class_name.method_name
         if TEST_CUDA and ('gpu' in fullname or 'cuda' in fullname):
             setattr(self, method_name, self.wrap_method_with_cuda_policy(test_method, policy))
@@ -1370,3 +1372,15 @@ def load_tests(loader, tests, pattern):
             check_test_defined_in_running_script(test)
             test_suite.addTest(test)
     return test_suite
+
+
+def _assertGradAndGradgradChecks(test_case, apply_fn, inputs):
+    # call assert function rather than returning a bool since it's nicer
+    # if we get whether this failed on the gradcheck or the gradgradcheck.
+    test_case.assertTrue(gradcheck(apply_fn, inputs))
+    test_case.assertTrue(gradgradcheck(apply_fn, inputs))
+
+
+dtype2prec = {torch.float: 1e-5,
+              torch.double: 1e-5,
+              torch.half: 1e-2}

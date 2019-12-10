@@ -756,6 +756,9 @@ if __name__ == '__main__':
 
     extensions, cmdclass, packages, entry_points = configure_extension_build()
 
+    packages.append('torch.testlib')
+    packages.append('torch.testlib.data')
+    packages.append('torch.testlib.distributed.rpc')
     setup(
         name=package_name,
         version=version,
@@ -766,6 +769,11 @@ if __name__ == '__main__':
         packages=packages,
         entry_points=entry_points,
         install_requires=install_requires,
+        package_dir={
+            'torch.testlib' : './test',
+            'torch.testlib.data' : './test/data',
+            'torch.testlib.distributed.rpc' : './test/distributed/rpc'
+        },
         package_data={
             'torch': [
                 'py.typed',

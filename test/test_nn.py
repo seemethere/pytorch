@@ -38,22 +38,24 @@ from torch.autograd import gradcheck
 from torch.autograd.gradcheck import gradgradcheck
 from torch.nn import Parameter
 from torch.nn.parallel._functions import Broadcast
-from common_utils import freeze_rng_state, run_tests, TestCase, skipIfNoLapack, skipIfRocm, \
+from torch.testlib.common_utils import freeze_rng_state, run_tests, TestCase, skipIfNoLapack, skipIfRocm, \
     TEST_NUMPY, TEST_SCIPY, download_file, PY3, to_gpu, \
     get_function_arglist, load_tests, repeat_test_for_types, ALL_TENSORTYPES, \
     TemporaryFileName
-from common_cuda import TEST_CUDA, TEST_MULTIGPU, TEST_CUDNN, TEST_CUDNN_VERSION
-from common_nn import NNTestCase, ModuleTest, CriterionTest, TestBase, \
+from torch.testlib.common_cuda import TEST_CUDA, TEST_MULTIGPU, TEST_CUDNN, TEST_CUDNN_VERSION
+from torch.testlib.common_nn import NNTestCase, ModuleTest, CriterionTest, TestBase, \
     module_tests, criterion_tests, new_criterion_tests, loss_reference_fns, \
     ctcloss_reference, new_module_tests
-from common_device_type import instantiate_device_type_tests, dtypes, \
+from torch.testlib.common_device_type import instantiate_device_type_tests, dtypes, \
     dtypesIfCUDA, skipCUDAIfNoCudnn, skipCUDAIfCudnnVersionLessThan, onlyCUDA, \
     skipCUDAIfRocm, skipCUDAIf
 
 from torch.nn import MultiheadAttention
 
 from hypothesis import given
-import hypothesis_utils as hu
+import torch.testlib.hypothesis_utils as hu
+from torch.testlib.common_utils import _assertGradAndGradgradChecks
+from torch.testlib.common_utils import dtype2prec
 
 # load_tests from common_utils is used to automatically filter tests for
 # sharding on sandcastle. This line silences flake warnings
@@ -74,10 +76,6 @@ NO_HALF_TENSORTYPES = [torch.float,
                        torch.double]
 
 DOUBLE_TENSORTYPES = [torch.double]
-
-dtype2prec = {torch.float: 1e-5,
-              torch.double: 1e-5,
-              torch.half: 1e-2}
 
 
 # WARNING: If you add a new top-level test case to this file, you MUST
@@ -195,13 +193,6 @@ class PackedSequenceTest(TestCase):
                     self.assertEqual(a, b.to('cpu', dtype=torch.int32))
                     self.assertIs(b, b.to(dtype=torch.int32))
                     self.assertEqual(b.long(), b.to(dtype=torch.int64))
-
-
-def _assertGradAndGradgradChecks(test_case, apply_fn, inputs):
-    # call assert function rather than returning a bool since it's nicer
-    # if we get whether this failed on the gradcheck or the gradgradcheck.
-    test_case.assertTrue(gradcheck(apply_fn, inputs))
-    test_case.assertTrue(gradgradcheck(apply_fn, inputs))
 
 
 class InputVariableMixin(object):
