@@ -1,4 +1,5 @@
 #include <torch/csrc/distributed/rpc/python_rpc_handler.h>
+#include <torch/csrc/distributed/rpc/rpc_agent.h>
 
 namespace torch {
 namespace distributed {
@@ -15,6 +16,21 @@ py::object getFunction(const py::object& module, const char* name) {
       " is not a function");
   return fn;
 }
+
+class GilWaitTimeGuard {
+ public:
+  explicit GilWaitTimeGuard()
+      : start(std::chrono::high_resolution_clock::now()) {}
+
+  void markAcquired() {
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::high_resolution_clock::now() - start);
+    RpcAgent::getDefaultRpcAgent()->addGilWaitTime(dur);
+  }
+
+ private:
+  std::chrono::time_point<std::chrono::high_resolution_clock> start;
+};
 
 } // namespace
 
@@ -63,7 +79,9 @@ py::object PythonRpcHandler::loadPythonUDFResult(
 
 py::object PythonRpcHandler::runPythonUDF(
     const SerializedPyObj& serializedObj) {
+  GilWaitTimeGuard g;
   pybind11::gil_scoped_acquire ag;
+  g.markAcquired();
   return pyRunFunction_(
       py::bytes(serializedObj.payload_), serializedObj.tensors_);
 }
