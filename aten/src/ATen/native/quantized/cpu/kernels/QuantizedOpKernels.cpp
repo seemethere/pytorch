@@ -7,6 +7,7 @@
 #include <ATen/quantized/Quantizer.h>
 #include <ATen/native/SortingUtils.h>
 
+#include <cmath>
 
 namespace at {
 namespace native {
@@ -189,6 +190,42 @@ void qrelu6_kernel(const Tensor& qx, Tensor& qy) {
           return scalar_t(std::min<underlying_t>(relu_val, six.val_));
         },
         [&](Vec val) -> Vec { return val.relu6(zero_point_vec, six_vec); });
+  });
+}
+
+void qtanh_kernel(const Tensor& qx, Tensor& qy) {
+  int64_t zero_point = qx.q_zero_point();
+  float scale = qx.q_scale();
+  float inv_scale = 1.0f / scale;
+  auto scale_vec = Vec256<float>(scale);
+  auto zero_point_vec = Vec256<float>((float)zero_point);
+  auto scale_neg_zp_premul_vec = scale_vec * zero_point_vec.neg();
+
+  AT_DISPATCH_QINT_TYPES(qx.scalar_type(), "qtanh", [&]() {
+    qy = at::_empty_affine_quantized(
+        qx.sizes(),
+        at::device(kCPU).dtype(SCALAR_TYPE),
+        qx.q_scale(),
+        qx.q_zero_point(),
+        qx.suggest_memory_format());
+    auto iter = TensorIterator::unary_op(qy, qx);
+
+    using Vec = Vec256<scalar_t>;
+    cpu_kernel_vec(
+      iter,
+      [&](scalar_t value_qx) -> scalar_t {
+        const auto value_dx = at::dequantize_val(scale, zero_point, value_qx);
+        return at::quantize_val<scalar_t>(scale, zero_point, std::tanh(value_dx));
+      },
+      [&](Vec value_qx) -> Vec {
+        const auto value_dx = value_qx.dequantize(scale_vec, zero_point_vec, scale_neg_zp_premul_vec);
+        Vec::float_vec_return_type retvals;
+        for (int idx = 0; idx < Vec::float_num_vecs(); ++idx) {
+          retvals[idx] = value_dx[idx].tanh();
+        }
+        return Vec::quantize(retvals, scale, zero_point, inv_scale);
+      }
+    );
   });
 }
 
@@ -812,6 +849,7 @@ void qtopk_kernel(Tensor& values,
 
 REGISTER_DISPATCH(qrelu_stub, &qrelu_kernel);
 REGISTER_DISPATCH(qrelu6_stub, &qrelu6_kernel);
+REGISTER_DISPATCH(qtanh_stub, &qtanh_kernel);
 REGISTER_DISPATCH(qadd_relu_stub, &qadd_kernel<true>);
 REGISTER_DISPATCH(qadd_stub, &qadd_kernel<false>);
 REGISTER_DISPATCH(qmaxpool_2d_nhwc_stub, &qmaxpool_2d_nhwc_kernel);
