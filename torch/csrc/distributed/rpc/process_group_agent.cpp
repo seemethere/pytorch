@@ -239,15 +239,15 @@ std::shared_ptr<FutureMessage> ProcessGroupAgent::send(
   if (message.isRequest()) {
     // millisecond level precision of when request started.
     auto futureStartTime = std::chrono::steady_clock::now();
-
+    // Prepare endTime from timeout.
+    auto timeout = rpcTimeout_.load();
+    // Set infinite timeout if specified.
+    steady_clock_time_point endTime = timeout.count() == 0
+        ? kInfiniteTimeoutTimePoint
+        : futureStartTime + timeout;
+    bool notifyThread = false;
     {
       std::lock_guard<std::mutex> lock{futureMutex_};
-      // Prepare endTime from timeout.
-      auto timeout = rpcTimeout_.load();
-      // Set infinite timeout if specified.
-      steady_clock_time_point endTime = timeout.count() == 0
-          ? kInfiniteTimeoutTimePoint
-          : futureStartTime + timeout;
       // Insert future into future map.
       futures_
           .emplace(
@@ -257,12 +257,22 @@ std::shared_ptr<FutureMessage> ProcessGroupAgent::send(
                   FutureInfo(future, endTime, to.id_, timeout)))
           .first->second;
       // insert future into timeouts map to keep track of its timeout
-      futureTimeouts_[endTime].push_back(requestId);
+      auto& requestIdVec = futureTimeouts_[endTime];
+      requestIdVec.push_back(requestId);
       // Signal the watchdog to monitor future timeouts if this is the first
-      // future created or if an RPC with a shorter TTL has been created.
-      if (futures_.size() == 1 || futureTimeouts_.begin()->first == endTime) {
-        futureTimeoutCV_.notify_one();
+      // future created or it has closer end time than other futures in the map.
+      if (futureTimeouts_.begin()->first == endTime &&
+          (requestIdVec.size() ==
+           1 // Avoid repeatedly waking up the watchdog,
+             // when we set rpcTimeout_ == INFINITE_TIMEOUT.
+           )) {
+        notifyThread = true;
       }
+    }
+    if (notifyThread) {
+      // Notify the wathdog thread only after releasing the lock,
+      // so watchdog can acquire lock on waking up.
+      futureTimeoutCV_.notify_one();
     }
     message.setId(requestId);
   } else {
@@ -401,10 +411,8 @@ void ProcessGroupAgent::enqueueRecv(RecvWork work) {
               futureTimeouts_.erase(endTime);
             }
           }
-          // Not holding lock on markCompleted as this could run callbacks that
-          // call agent_->send
-          fm->markCompleted(std::move(message));
           futureCV_.notify_all();
+          fm->markCompleted(std::move(message));
         } else {
           // TODO: pass the error back to the caller instead of crashing here.
           TORCH_INTERNAL_ASSERT(
@@ -471,21 +479,40 @@ void ProcessGroupAgent::pollTimedOutRPCs() {
       minEndTime = futureTimeouts_.begin()->first;
     }
 
+    const auto& shouldUpdateMinEndTimePredicate = [&, this]() -> bool {
+      // Do not wait on the cond var if RPC has shutdown.
+      // Notice, whoever modifying `rpcRunning_`
+      // must acquire lock on `futureMutex_`.
+      // Otherwise, this predicate could deadlock.
+      // When the predicate evaluates to false,
+      // the thread will start waiting on the cond var.
+      // So if, during running the predicate, `::shutdown()` is called, then
+      // the predicate missed the notification before it started waiting.
+      if (!rpcRunning_.load()) {
+        return true;
+      }
+      const steady_clock_time_point& minEndTimeInMap =
+          futureTimeouts_.begin()->first;
+      return minEndTimeInMap < minEndTime;
+    };
+
+    bool shutUpdateMinEndTime = true;
     if (minEndTime == kInfiniteTimeoutTimePoint) {
-      futureTimeoutCV_.wait(lock);
+      futureTimeoutCV_.wait(lock, shouldUpdateMinEndTimePredicate);
     } else {
-      futureTimeoutCV_.wait_until(lock, minEndTime);
+      shutUpdateMinEndTime = futureTimeoutCV_.wait_until(
+          lock, minEndTime, shouldUpdateMinEndTimePredicate);
+    }
+    if (shutUpdateMinEndTime) {
+      continue;
     }
 
     if (!rpcRunning_.load()) {
       return;
     }
 
-    const auto timedOutFutures = processTimedOutFutures();
+    const auto timedOutFutures = processTimedOutFutures(std::move(lock));
 
-    // Do not hold the lock while marking futures completed, as markCompleted()
-    // could invoke callbacks.
-    lock.unlock();
     for (const auto& timedOutFuture : timedOutFutures) {
       std::ostringstream ss;
       ss << "RPC ran for more than " << timedOutFuture.timeout_.count()
@@ -496,13 +523,12 @@ void ProcessGroupAgent::pollTimedOutRPCs() {
 
       const int dst = timedOutFuture.dstRank_;
       recvCounts_.increment(dst);
-      futureCV_.notify_all();
     }
   }
 }
 
 const std::vector<ProcessGroupAgent::FutureInfo> ProcessGroupAgent::
-    processTimedOutFutures() {
+    processTimedOutFutures(std::unique_lock<std::mutex> lock) {
   std::vector<FutureInfo> timedOutFutures;
   for (auto it = futureTimeouts_.begin(); it != futureTimeouts_.end();
        /* intentional no increment */) {
@@ -525,6 +551,8 @@ const std::vector<ProcessGroupAgent::FutureInfo> ProcessGroupAgent::
       it = futureTimeouts_.erase(it);
     }
   }
+  lock.unlock();
+  futureCV_.notify_all();
   return timedOutFutures;
 }
 
