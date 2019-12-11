@@ -74,7 +74,8 @@ namespace jit {
   _(LiteInterpreterInline)             \
   _(LiteInterpreterTuple)              \
   _(LiteInterpreterPrimOverload)       \
-  _(CommonAncestor)
+  _(CommonAncestor)                    \
+  _(MobileTypeParser)
 
 #define TH_FORALL_TESTS_CUDA(_) \
   _(ArgumentSpec)               \
