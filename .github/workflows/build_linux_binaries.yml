@@ -24,9 +24,26 @@ jobs:
           python .github/scripts/generate_binary_build_matrix.py
           MATRIX=$(python .github/scripts/generate_binary_build_matrix.py)
           echo "::set-output name=matrix::${MATRIX}"
+  determine-upload-channel:
+    if: ${{ github.repository_owner == 'pytorch' }}
+    runs-on: ubuntu-latest
+    outputs:
+      upload_channel: ${{ steps.set-upload-channel.upload_channel }}
+    steps:
+      - name: Clone pytorch/pytorch
+        uses: actions/checkout@v2
+      - name: Determining upload channel
+        id: set-upload-channel
+        run: |
+          UPLOAD_CHANNEL=nightly
+          # Sets upload channel to test if on tag or on a release branch
+          if git describe --exact --tags || [[ ${GITHUB_REF} =~ release/* ]]; then
+            UPLOAD_CHANNEL=test
+          fi
+          echo "::set-output name=upload_channel::${UPLOAD_CHANNEL}"
   build-wheel:
     if: ${{ github.repository_owner == 'pytorch' }}
-    needs: generate-build-matrix
+    needs: [generate-build-matrix]
     runs-on: linux.2xlarge
     strategy:
       matrix:
@@ -83,4 +100,18 @@ jobs:
         with:
           name: pytorch-wheel-py${{ matrix.python_version }}-${{matrix.gpu_arch_type}}-${{ matrix.gpu_arch_version }}
           path: /remote/**/*.whl
-      # TODO: Add a step here for uploading binaries
+  upload-wheel:
+    if: |
+      ${{ github.repository_owner == 'pytorch' }} && (
+      ${{ github.event_name == 'schedule' }} ||
+      ${{ github.event_name == '' }}
+      )
+    needs: [build-wheel, generate-build-matrix, determine-upload-channel]
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.9
+    strategy:
+      matrix:
+        ${{ fromJson(needs.generate-build-matrix.outputs.matrix) }}
+    env:
+      UPLOAD_CHANNEL: ${{ needs.determine-upload-channel.outputs.upload_channel }}
