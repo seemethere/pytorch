@@ -106,6 +106,10 @@ def gen_build_workflows_tree():
         binary_build_definitions.get_nightly_uploads,
     ]
 
+    build_docker_cache = [
+        cimodel.data.simple.docker_definitions.get_workflow_jobs
+    ]
+
     return {
         "workflows": {
             "binary_builds": {
@@ -116,6 +120,9 @@ def gen_build_workflows_tree():
                 "when": r"<< pipeline.parameters.run_build >>",
                 "jobs": [f() for f in build_workflows_functions]
             },
+            "build_docker_cache": {
+                ""
+            }
         }
     }
 

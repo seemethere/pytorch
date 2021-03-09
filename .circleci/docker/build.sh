@@ -297,11 +297,14 @@ fi
 
 tmp_tag="tmp-$(cat /dev/urandom | tr -dc 'a-z' | fold -w 32 | head -n 1)"
 
+# NOTE: CACHE_TO_FLAG is populated from .circleci/docker/build.sh when PUBLISH_CACHE is set
+
 # Build image
 # TODO: build-arg THRIFT is not turned on for any image, remove it once we confirm
 # it's no longer needed.
-docker build \
-       --no-cache \
+docker buildx \
+       build \
+       ${CACHE_TO_FLAG} \
        --progress=plain \
        --build-arg "TRAVIS_DL_URL_PREFIX=${TRAVIS_DL_URL_PREFIX}" \
        --build-arg "BUILD_ENVIRONMENT=${image}" \
