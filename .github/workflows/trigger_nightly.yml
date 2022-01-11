@@ -8,7 +8,7 @@ on:
 
 jobs:
   tag_nightly:
-    if: ${{ github.repository == 'pytorch/pytorch' }}
+    if: ${{ github.repository == 'seemethere/pytorch' }}
     name: Tag nightly from viable/strict
     runs-on: ubuntu-latest
     steps:
