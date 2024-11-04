@@ -3426,6 +3426,7 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
     // obj is globals dict because GlobalWeakRefGuardAccessor has to be a
     // child of GlobalsGuardAccessor.
     PyObject* weakref = PyDict_GetItem(obj, _global_name); // borrowed ref
+    PyObject* strongref = NULL;
     if (weakref == nullptr) {
       // The weakref is not in the globals dict.
       PyErr_Clear();
@@ -3436,8 +3437,8 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
       return false;
     }
 
-    PyObject* x = PyWeakref_GetObject(weakref); // borrowed ref
-    return _guard_manager->check_nopybind(x);
+    PyWeakref_GetRef(weakref, &strongref); // borrowed ref
+    return _guard_manager->check_nopybind(strongref);
   }
 
   GuardDebugInfo check_verbose_nopybind(
@@ -3445,6 +3446,7 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
     // obj is globals dict because GlobalWeakRefGuardAccessor has to be a
     // child of GlobalsGuardAccessor.
     PyObject* weakref = PyDict_GetItem(obj, _global_name); // borrowed ref
+    PyObject* strongref = NULL;
     if (weakref == nullptr) {
       // The weakref is not in the globals dict.
       PyErr_Clear();
@@ -3457,8 +3459,8 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
           false, std::string("Not a weakref ") + get_source(), 0);
     }
 
-    PyObject* x = PyWeakref_GetObject(weakref); // borrowed ref
-    return _guard_manager->check_verbose_nopybind(x);
+    PyWeakref_GetRef(weakref, &strongref); // borrowed ref
+    return _guard_manager->check_verbose_nopybind(strongref);
   }
 
   std::string repr() const override {
@@ -3496,8 +3498,9 @@ class WeakRefCallGuardAccessor : public GuardAccessor {
       return false;
     }
 
-    PyObject* x = PyWeakref_GetObject(obj); // borrowed ref
-    return _guard_manager->check_nopybind(x);
+    PyObject* strongref = NULL;
+    PyWeakref_GetRef(obj, &strongref); // borrowed ref
+    return _guard_manager->check_nopybind(strongref);
   }
 
   GuardDebugInfo check_verbose_nopybind(
@@ -3507,8 +3510,9 @@ class WeakRefCallGuardAccessor : public GuardAccessor {
           false, std::string("Not a weakref obj ") + get_source(), 0);
     }
 
-    PyObject* x = PyWeakref_GetObject(obj); // borrowed ref
-    return _guard_manager->check_verbose_nopybind(x);
+    PyObject* strongref = NULL;
+    PyWeakref_GetRef(obj, &strongref); // borrowed ref
+    return _guard_manager->check_verbose_nopybind(strongref);
   }
 
   std::string repr() const override {
