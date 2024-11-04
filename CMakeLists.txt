@@ -466,6 +466,7 @@ option(USE_SYSTEM_ONNX "Use system-provided onnx." OFF)
 option(USE_SYSTEM_XNNPACK "Use system-provided xnnpack." OFF)
 OPTION(USE_SYSTEM_NVTX "Use system-provided nvtx." OFF)
 option(USE_GOLD_LINKER "Use ld.gold to link" OFF)
+option(USE_MOLD_LINKER "Use ld.mold to link" OFF)
 if(USE_SYSTEM_LIBS)
   set(USE_SYSTEM_CPUINFO ON)
   set(USE_SYSTEM_SLEEF ON)
@@ -1054,6 +1055,27 @@ if(NOT MSVC)
             "${CMAKE_MODULE_LINKER_FLAGS} -fuse-ld=gold")
       endif()
     endif()
+  endif()
+
+  if(USE_MOLD_LINKER)
+    # execute_process(
+    #   COMMAND "${CMAKE_C_COMPILER}" -fuse-ld=gold -Wl,--version
+    #   ERROR_QUIET
+    #   OUTPUT_VARIABLE LD_VERSION)
+    # if(NOT "${LD_VERSION}" MATCHES "GNU mold")
+    #   message(
+    #     WARNING
+    #       "USE_GOLD_LINKER was set but ld.gold isn't available, turning it off"
+    #   )
+    #   set(USE_GOLD_LINKER OFF)
+    # else()
+      message(STATUS "ld.mold is available, using it to link")
+      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
+      set(CMAKE_SHARED_LINKER_FLAGS
+          "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=mold")
+      set(CMAKE_MODULE_LINKER_FLAGS
+          "${CMAKE_MODULE_LINKER_FLAGS} -fuse-ld=mold")
+    # endif()
   endif()
 
   append_cxx_flag_if_supported("-Wno-error=old-style-cast" CMAKE_CXX_FLAGS)
